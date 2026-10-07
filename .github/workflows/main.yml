@@ -12,8 +12,17 @@ jobs:
 
     steps:
 
+      # ==========================================
+      # 1. CHECKOUT
+      # ==========================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # ==========================================
+      # 2. FIND HIGH-END ZIP
+      # ==========================================
 
       - name: Find HIGH-END ZIP
         shell: bash
@@ -21,18 +30,27 @@ jobs:
           set -e
 
           ZIP=$(find "$GITHUB_WORKSPACE" \
-            -maxdepth 3 \
+            -maxdepth 4 \
             -type f \
             -name "RealDriveV2-HIGH-END.zip" \
             | head -n 1)
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: RealDriveV2-HIGH-END.zip not found"
+            echo "Files found:"
+            find "$GITHUB_WORKSPACE" -maxdepth 4 -type f | head -100
             exit 1
           fi
 
+          echo "Found ZIP:"
+          echo "$ZIP"
+
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-          echo "Found: $ZIP"
+
+
+      # ==========================================
+      # 3. EXTRACT PROJECT
+      # ==========================================
 
       - name: Extract HIGH-END project
         shell: bash
@@ -40,10 +58,22 @@ jobs:
           set -e
 
           rm -rf "$GITHUB_WORKSPACE/project"
+
           mkdir -p "$GITHUB_WORKSPACE/project"
 
           unzip -o "$ZIP" \
             -d "$GITHUB_WORKSPACE/project"
+
+          echo "Extracted project files:"
+          find "$GITHUB_WORKSPACE/project" \
+            -maxdepth 4 \
+            -type f \
+            | head -100
+
+
+      # ==========================================
+      # 4. FIND GODOT PROJECT
+      # ==========================================
 
       - name: Find Godot project
         shell: bash
@@ -64,13 +94,26 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "PROJECT_DIR=$PROJECT_DIR"
+          echo "================================"
+          echo "Godot project found:"
+          echo "$PROJECT_DIR"
+          echo "================================"
+
+
+      # ==========================================
+      # 5. JAVA 17
+      # ==========================================
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
+
+      # ==========================================
+      # 6. ANDROID SDK
+      # ==========================================
 
       - name: Setup Android SDK
         shell: bash
@@ -96,7 +139,8 @@ jobs:
             exit 1
           fi
 
-          echo "Android SDK: $SDK"
+          echo "Android SDK:"
+          echo "$SDK"
 
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
@@ -117,6 +161,7 @@ jobs:
 
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
+          echo "sdkmanager:"
           "$SDKMANAGER" --version
 
           yes | "$SDKMANAGER" --licenses || true
@@ -126,12 +171,22 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
+
+      # ==========================================
+      # 7. GODOT 4.3
+      # ==========================================
+
       - name: Setup Godot 4.3
         uses: chickensoft-games/setup-godot@v2
         with:
           version: "4.3.0"
           use-dotnet: false
           include-templates: true
+
+
+      # ==========================================
+      # 8. GODOT ANDROID SETTINGS
+      # ==========================================
 
       - name: Configure Godot Android settings
         shell: bash
@@ -152,12 +207,22 @@ jobs:
           export/android/debug_keystore_pass = "android"
           EOF
 
+          echo "Godot Android settings:"
+          cat "$HOME/.config/godot/editor_settings-4.tres"
+
+
+      # ==========================================
+      # 9. DEBUG KEYSTORE
+      # ==========================================
+
       - name: Create debug keystore
         shell: bash
         run: |
           set -e
 
           mkdir -p "$HOME/.android"
+
+          rm -f "$HOME/.android/debug.keystore"
 
           keytool \
             -genkeypair \
@@ -171,17 +236,41 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+          echo "Debug keystore created:"
           ls -lh "$HOME/.android/debug.keystore"
+
+
+      # ==========================================
+      # 10. VERIFY TOOLS
+      # ==========================================
 
       - name: Verify tools
         shell: bash
         run: |
           set -e
 
+          echo "===== JAVA ====="
           java -version
+
+          echo "===== GODOT ====="
           godot --version
+
+          echo "===== ADB ====="
           "$ANDROID_SDK_ROOT/platform-tools/adb" version
+
+          echo "===== SDKMANAGER ====="
           "$SDKMANAGER" --version
+
+          echo "===== BUILD TOOLS ====="
+          ls -la "$ANDROID_SDK_ROOT/build-tools/35.0.0"
+
+          echo "===== PLATFORM ====="
+          ls -la "$ANDROID_SDK_ROOT/platforms/android-35"
+
+
+      # ==========================================
+      # 11. CREATE ANDROID EXPORT PRESET
+      # ==========================================
 
       - name: Create Android export preset
         shell: bash
@@ -256,19 +345,19 @@ jobs:
 
           graphics/opengl_debug=false
 
-          shader_baker/enabled=false
+          gesture/swipe_to_dismiss=false
 
           xr_features/xr_mode=0
 
-          gesture/swipe_to_dismiss=false
-
-          screen/immersive_mode=true
+          screen/background_color=Color(0, 0, 0, 1)
           screen/edge_to_edge=false
+          screen/immersive_mode=true
           screen/support_small=true
           screen/support_normal=true
           screen/support_large=true
           screen/support_xlarge=true
-          screen/background_color=Color(0, 0, 0, 1)
+
+          shader_baker/enabled=false
 
           user_data_backup/allow=false
 
@@ -292,13 +381,63 @@ jobs:
           permissions/post_notifications=false
           EOF
 
-          echo "Android preset created:"
+          echo "================================"
+          echo "ANDROID PRESET CREATED"
+          echo "================================"
+
           cat "$PROJECT_DIR/export_presets.cfg"
+
+
+      # ==========================================
+      # 12. ENABLE ETC2 / ASTC
+      # ==========================================
+
+      - name: Enable Android ETC2 ASTC
+        shell: bash
+        run: |
+          set -e
+
+          echo "================================"
+          echo "ENABLING ETC2 / ASTC"
+          echo "================================"
+
+          python3 - "$PROJECT_DIR/project.godot" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = f.read()
+
+          setting = "textures/vram_compression/import_etc2_astc=true"
+
+          if setting not in data:
+              data += "\n\n[rendering]\n\n" + setting + "\n"
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(data)
+
+          print("ETC2/ASTC setting enabled.")
+          PY
+
+          echo "===== RENDERING SETTINGS ====="
+
+          grep -A10 "\[rendering\]" \
+            "$PROJECT_DIR/project.godot" || true
+
+
+      # ==========================================
+      # 13. IMPORT GODOT PROJECT
+      # ==========================================
 
       - name: Import Godot project
         shell: bash
         run: |
           set -e
+
+          echo "================================"
+          echo "IMPORTING GODOT PROJECT"
+          echo "================================"
 
           godot \
             --headless \
@@ -306,22 +445,52 @@ jobs:
             --editor \
             --quit
 
+          echo "Godot project imported successfully."
+
+
+      # ==========================================
+      # 14. CHECK PROJECT
+      # ==========================================
+
       - name: Check Android preset
         shell: bash
         run: |
           set -e
 
-          echo "===== PROJECT ====="
+          echo "================================"
+          echo "PROJECT FILE"
+          echo "================================"
+
           cat "$PROJECT_DIR/project.godot"
 
-          echo "===== EXPORT PRESET ====="
+          echo "================================"
+          echo "EXPORT PRESET"
+          echo "================================"
+
           cat "$PROJECT_DIR/export_presets.cfg"
 
-          echo "===== KEYSTORE ====="
+          echo "================================"
+          echo "KEYSTORE"
+          echo "================================"
+
           ls -lh "$HOME/.android/debug.keystore"
 
-          echo "===== SDK BUILD TOOLS ====="
-          ls -la "$ANDROID_SDK_ROOT/build-tools/35.0.0"
+          echo "================================"
+          echo "ANDROID SDK"
+          echo "================================"
+
+          echo "SDK: $ANDROID_SDK_ROOT"
+
+          echo "================================"
+          echo "GODOT VERSION"
+          echo "================================"
+
+          godot --version
+
+
+      # ==========================================
+      # 15. BUILD APK
+      # ==========================================
 
       - name: Build Android APK
         shell: bash
@@ -330,9 +499,11 @@ jobs:
 
           mkdir -p "$PROJECT_DIR/build"
 
-          echo "=============================="
+          echo ""
+          echo "================================"
           echo "BUILDING REALDRIVE V2"
-          echo "=============================="
+          echo "================================"
+          echo ""
 
           godot \
             --headless \
@@ -342,6 +513,11 @@ jobs:
             "Android" \
             "$PROJECT_DIR/build/RealDriveV2-HIGH-END.apk"
 
+
+      # ==========================================
+      # 16. VERIFY APK
+      # ==========================================
+
       - name: Verify APK
         shell: bash
         run: |
@@ -349,24 +525,37 @@ jobs:
 
           APK="$PROJECT_DIR/build/RealDriveV2-HIGH-END.apk"
 
+          echo "================================"
+          echo "VERIFYING APK"
+          echo "================================"
+
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK was not created."
 
-            echo "Build directory:"
+            echo ""
+            echo "BUILD DIRECTORY:"
             find "$PROJECT_DIR/build" \
-              -maxdepth 3 \
+              -maxdepth 5 \
               -type f \
               -ls || true
 
             exit 1
           fi
 
+          echo ""
           echo "================================"
           echo "APK CREATED SUCCESSFULLY"
           echo "================================"
+          echo ""
 
           ls -lh "$APK"
+
           file "$APK"
+
+
+      # ==========================================
+      # 17. UPLOAD APK
+      # ==========================================
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
