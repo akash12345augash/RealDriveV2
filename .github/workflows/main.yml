@@ -15,36 +15,26 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Find HIGH-END ZIP
-        shell: bash
         run: |
           set -e
-
           ZIP=$(find . -type f -name "RealDriveV2-HIGH-END.zip" | head -1)
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: RealDriveV2-HIGH-END.zip not found"
-            find . -type f -name "*.zip" -print
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP"
           echo "ZIP_FILE=$ZIP" >> "$GITHUB_ENV"
+          echo "Found: $ZIP"
 
       - name: Extract HIGH-END project
-        shell: bash
         run: |
           set -e
-
           rm -rf game
           mkdir -p game
-
           unzip -o "$ZIP_FILE" -d game
 
-          echo "Searching for Godot project..."
-          find game -name "project.godot" -print
-
       - name: Find Godot project
-        shell: bash
         run: |
           set -e
 
@@ -59,11 +49,9 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Godot project directory:"
-          echo "$PROJECT_DIR"
+          echo "Project: $PROJECT_DIR"
 
-      - name: Create clean Android export preset
-        shell: bash
+      - name: Create valid Android preset
         run: |
           set -e
 
@@ -71,103 +59,56 @@ jobs:
           [preset.0]
 
           name="Android"
-
           platform="Android"
-
           runnable=false
-
-          advanced_options=false
-
           dedicated_server=false
-
           custom_features=""
-
           export_filter="all_resources"
-
           include_filter=""
-
           exclude_filter=""
-
-          export_path="build/RealDriveV2-HIGH-END.apk"
-
+          export_path=""
+          patches=PackedStringArray()
           encryption_include_filters=""
-
           encryption_exclude_filters=""
-
+          seed=0
           encrypt_pck=false
-
           encrypt_directory=false
-
           script_export_mode=2
 
           [preset.0.options]
 
           custom_template/debug=""
-
           custom_template/release=""
 
           gradle_build/use_gradle_build=false
-
           gradle_build/gradle_build_directory=""
-
           gradle_build/android_source_template=""
-
           gradle_build/compress_native_libraries=false
-
           gradle_build/export_format=0
-
           gradle_build/min_sdk=""
-
           gradle_build/target_sdk=""
 
-          keystore/debug=""
-
-          keystore/debug_user=""
-
-          keystore/debug_password=""
-
-          keystore/release=""
-
-          keystore/release_user=""
-
-          keystore/release_password=""
-
           architectures/armeabi-v7a=false
-
           architectures/arm64-v8a=true
-
           architectures/x86=false
-
           architectures/x86_64=false
 
           version/code=1
-
           version/name="1.0"
 
           package/unique_name="com.realdrive.v2.highend"
-
           package/name="RealDrive V2 HIGH-END"
-
           package/signed=true
-
           package/app_category=2
-
           package/retain_data_on_uninstall=false
-
           package/exclude_from_recents=false
-
           package/show_in_android_tv=false
-
           package/show_in_app_library=true
-
           package/show_as_launcher_app=true
 
           launcher_icons/main_192x192=""
-
           launcher_icons/adaptive_foreground_432x432=""
-
           launcher_icons/adaptive_background_432x432=""
-
           launcher_icons/adaptive_monochrome_432x432=""
 
           graphics/opengl_debug=false
@@ -175,13 +116,9 @@ jobs:
           gesture/swipe_to_dismiss=false
 
           screen/immersive_mode=true
-
           screen/support_small=true
-
           screen/support_normal=true
-
           screen/support_large=true
-
           screen/support_xlarge=true
 
           shader_baker/enabled=false
@@ -191,21 +128,16 @@ jobs:
           command_line/extra_args=""
 
           apk_expansion/enable=false
-
           apk_expansion/SALT=""
-
           apk_expansion/public_key=""
 
           permissions/custom_permissions=PackedStringArray()
-
-          permissions/internet=false
-
+          permissions/internet=true
           permissions/vibrate=false
-
           permissions/wake_lock=false
           EOF
 
-          echo "===== NEW EXPORT PRESET ====="
+          echo "Android preset created:"
           cat "$PROJECT_DIR/export_presets.cfg"
 
       - name: Setup Godot
@@ -219,50 +151,37 @@ jobs:
         run: |
           godot --version
 
-      - name: Import Godot project
-        shell: bash
+      - name: Import project
         run: |
-          set -e
-
           godot \
             --headless \
             --editor \
             --quit \
             --path "$PROJECT_DIR"
 
-      - name: Build Android APK
-        shell: bash
+      - name: Validate Android preset
         run: |
-          set -e
-
-          mkdir -p "$PROJECT_DIR/build"
-
-          echo "Starting Android export..."
+          set +e
 
           godot \
             --headless \
             --path "$PROJECT_DIR" \
             --export-debug "Android" \
-            "$PROJECT_DIR/build/RealDriveV2-HIGH-END.apk"
+            "$PROJECT_DIR/build/test.apk" \
+            2>&1 | tee export-test.log
 
-      - name: Check APK
-        shell: bash
-        run: |
-          set -e
+          STATUS=${PIPESTATUS[0]}
 
-          echo "Looking for APK..."
-
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
-
-          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK was not generated"
-            exit 1
+          if [ "$STATUS" -ne 0 ]; then
+            echo ""
+            echo "===== GODOT EXPORT ERROR ====="
+            cat export-test.log
+            exit "$STATUS"
           fi
 
-          echo "APK SUCCESS:"
-          ls -lh "$APK"
+      - name: Check APK
+        run: |
+          find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
