@@ -23,7 +23,6 @@ jobs:
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: RealDriveV2-HIGH-END.zip was not found."
-            echo "ZIP files currently in repository:"
             find . -type f -name "*.zip" -print
             exit 1
           fi
@@ -39,12 +38,10 @@ jobs:
           rm -rf game
           mkdir -p game
 
-          echo "Extracting $ZIP_FILE"
           unzip -o "$ZIP_FILE" -d game
 
-          echo ""
-          echo "Extracted files:"
-          find game -maxdepth 4 -type f | head -100
+          echo "Extracted project:"
+          find game -name "project.godot" -o -name "export_presets.cfg"
 
       - name: Find Godot project
         shell: bash
@@ -60,10 +57,46 @@ jobs:
 
           PROJECT_DIR=$(dirname "$PROJECT_FILE")
 
-          echo "Godot project found at:"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Godot project:"
           echo "$PROJECT_DIR"
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: Fix Android export preset
+        shell: bash
+        run: |
+          set -e
+
+          PRESET="$PROJECT_DIR/export_presets.cfg"
+
+          if [ ! -f "$PRESET" ]; then
+            echo "ERROR: export_presets.cfg not found."
+            exit 1
+          fi
+
+          echo "Before fix:"
+          cat "$PRESET"
+
+          python3 - "$PRESET" <<'PY'
+          import sys
+
+          path = sys.argv[1]
+
+          with open(path, "r", encoding="utf-8") as f:
+              text = f.read()
+
+          if 'include_filter=' not in text:
+              text = text.replace(
+                  'export_filter="all_resources"',
+                  'export_filter="all_resources"\ninclude_filter=""\nexclude_filter=""'
+              )
+
+          with open(path, "w", encoding="utf-8") as f:
+              f.write(text)
+          PY
+
+          echo "After fix:"
+          cat "$PRESET"
 
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
