@@ -1,4 +1,4 @@
-name: Build Real Drive V2 APK
+name: Build Android APK
 
 on:
   workflow_dispatch:
@@ -8,8 +8,12 @@ on:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Real Drive V2 APK
     runs-on: ubuntu-latest
+
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout source
@@ -21,11 +25,32 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Install Android SDK
+      - name: Configure Android SDK
+        shell: bash
         run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/tools/bin" >> "$GITHUB_PATH"
+
+          export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/tools/bin:$PATH"
+
+          echo "Checking SDK..."
+          ls -la "$ANDROID_SDK_ROOT" || true
+          ls -la "$ANDROID_SDK_ROOT/cmdline-tools" || true
+          ls -la "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" || true
+
+          command -v sdkmanager
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+
+          yes | sdkmanager --licenses || true
+
           sdkmanager "platform-tools"
           sdkmanager "platforms;android-35"
           sdkmanager "build-tools;35.0.0"
@@ -35,13 +60,26 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Check project
+        shell: bash
+        run: |
+          echo "Project files:"
+          ls -la
+
+          echo "Gradle files:"
+          find . -maxdepth 2 -type f \
+            \( -name "gradlew" -o -name "settings.gradle*" -o -name "build.gradle*" \) \
+            -print
+
       - name: Build Debug APK
+        shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: RealDriveV2-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
