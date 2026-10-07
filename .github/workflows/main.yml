@@ -22,12 +22,12 @@ jobs:
           ZIP=$(find . -type f -name "RealDriveV2-HIGH-END.zip" | head -1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERROR: RealDriveV2-HIGH-END.zip was not found."
+            echo "ERROR: RealDriveV2-HIGH-END.zip not found"
             find . -type f -name "*.zip" -print
             exit 1
           fi
 
-          echo "Found: $ZIP"
+          echo "Found ZIP: $ZIP"
           echo "ZIP_FILE=$ZIP" >> "$GITHUB_ENV"
 
       - name: Extract HIGH-END project
@@ -40,8 +40,8 @@ jobs:
 
           unzip -o "$ZIP_FILE" -d game
 
-          echo "Extracted project:"
-          find game -name "project.godot" -o -name "export_presets.cfg"
+          echo "Searching for Godot project..."
+          find game -name "project.godot" -print
 
       - name: Find Godot project
         shell: bash
@@ -51,7 +51,7 @@ jobs:
           PROJECT_FILE=$(find game -type f -name "project.godot" | head -1)
 
           if [ -z "$PROJECT_FILE" ]; then
-            echo "ERROR: project.godot not found."
+            echo "ERROR: project.godot not found"
             exit 1
           fi
 
@@ -59,44 +59,154 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Godot project:"
+          echo "Godot project directory:"
           echo "$PROJECT_DIR"
 
-      - name: Fix Android export preset
+      - name: Create clean Android export preset
         shell: bash
         run: |
           set -e
 
-          PRESET="$PROJECT_DIR/export_presets.cfg"
+          cat > "$PROJECT_DIR/export_presets.cfg" <<'EOF'
+          [preset.0]
 
-          if [ ! -f "$PRESET" ]; then
-            echo "ERROR: export_presets.cfg not found."
-            exit 1
-          fi
+          name="Android"
 
-          echo "Before fix:"
-          cat "$PRESET"
+          platform="Android"
 
-          python3 - "$PRESET" <<'PY'
-          import sys
+          runnable=false
 
-          path = sys.argv[1]
+          advanced_options=false
 
-          with open(path, "r", encoding="utf-8") as f:
-              text = f.read()
+          dedicated_server=false
 
-          if 'include_filter=' not in text:
-              text = text.replace(
-                  'export_filter="all_resources"',
-                  'export_filter="all_resources"\ninclude_filter=""\nexclude_filter=""'
-              )
+          custom_features=""
 
-          with open(path, "w", encoding="utf-8") as f:
-              f.write(text)
-          PY
+          export_filter="all_resources"
 
-          echo "After fix:"
-          cat "$PRESET"
+          include_filter=""
+
+          exclude_filter=""
+
+          export_path="build/RealDriveV2-HIGH-END.apk"
+
+          encryption_include_filters=""
+
+          encryption_exclude_filters=""
+
+          encrypt_pck=false
+
+          encrypt_directory=false
+
+          script_export_mode=2
+
+          [preset.0.options]
+
+          custom_template/debug=""
+
+          custom_template/release=""
+
+          gradle_build/use_gradle_build=false
+
+          gradle_build/gradle_build_directory=""
+
+          gradle_build/android_source_template=""
+
+          gradle_build/compress_native_libraries=false
+
+          gradle_build/export_format=0
+
+          gradle_build/min_sdk=""
+
+          gradle_build/target_sdk=""
+
+          keystore/debug=""
+
+          keystore/debug_user=""
+
+          keystore/debug_password=""
+
+          keystore/release=""
+
+          keystore/release_user=""
+
+          keystore/release_password=""
+
+          architectures/armeabi-v7a=false
+
+          architectures/arm64-v8a=true
+
+          architectures/x86=false
+
+          architectures/x86_64=false
+
+          version/code=1
+
+          version/name="1.0"
+
+          package/unique_name="com.realdrive.v2.highend"
+
+          package/name="RealDrive V2 HIGH-END"
+
+          package/signed=true
+
+          package/app_category=2
+
+          package/retain_data_on_uninstall=false
+
+          package/exclude_from_recents=false
+
+          package/show_in_android_tv=false
+
+          package/show_in_app_library=true
+
+          package/show_as_launcher_app=true
+
+          launcher_icons/main_192x192=""
+
+          launcher_icons/adaptive_foreground_432x432=""
+
+          launcher_icons/adaptive_background_432x432=""
+
+          launcher_icons/adaptive_monochrome_432x432=""
+
+          graphics/opengl_debug=false
+
+          gesture/swipe_to_dismiss=false
+
+          screen/immersive_mode=true
+
+          screen/support_small=true
+
+          screen/support_normal=true
+
+          screen/support_large=true
+
+          screen/support_xlarge=true
+
+          shader_baker/enabled=false
+
+          user_data_backup/allow=false
+
+          command_line/extra_args=""
+
+          apk_expansion/enable=false
+
+          apk_expansion/SALT=""
+
+          apk_expansion/public_key=""
+
+          permissions/custom_permissions=PackedStringArray()
+
+          permissions/internet=false
+
+          permissions/vibrate=false
+
+          permissions/wake_lock=false
+          EOF
+
+          echo "===== NEW EXPORT PRESET ====="
+          cat "$PROJECT_DIR/export_presets.cfg"
 
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
@@ -110,7 +220,10 @@ jobs:
           godot --version
 
       - name: Import Godot project
+        shell: bash
         run: |
+          set -e
+
           godot \
             --headless \
             --editor \
@@ -124,6 +237,8 @@ jobs:
 
           mkdir -p "$PROJECT_DIR/build"
 
+          echo "Starting Android export..."
+
           godot \
             --headless \
             --path "$PROJECT_DIR" \
@@ -131,14 +246,28 @@ jobs:
             "$PROJECT_DIR/build/RealDriveV2-HIGH-END.apk"
 
       - name: Check APK
+        shell: bash
         run: |
-          echo "Generated APK:"
+          set -e
+
+          echo "Looking for APK..."
+
           find "$PROJECT_DIR" -type f -name "*.apk" -print
+
+          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not generated"
+            exit 1
+          fi
+
+          echo "APK SUCCESS:"
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RealDriveV2-HIGH-END-debug
+          name: RealDriveV2-HIGH-END
           path: |
             ${{ env.PROJECT_DIR }}/build/*.apk
           if-no-files-found: error
