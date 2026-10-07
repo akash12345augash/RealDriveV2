@@ -31,9 +31,7 @@ jobs:
             exit 1
           fi
 
-          echo "Found ZIP:"
-          echo "$ZIP"
-
+          echo "Found: $ZIP"
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
 
       - name: Extract HIGH-END project
@@ -42,7 +40,6 @@ jobs:
           set -e
 
           rm -rf "$GITHUB_WORKSPACE/project"
-
           mkdir -p "$GITHUB_WORKSPACE/project"
 
           unzip -o "$ZIP" \
@@ -100,8 +97,7 @@ jobs:
             exit 1
           fi
 
-          echo "Android SDK:"
-          echo "$SDK"
+          echo "Android SDK: $SDK"
 
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
@@ -161,6 +157,9 @@ jobs:
 
           export/android/android_sdk_path = "$ANDROID_SDK_ROOT"
           export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
           EOF
 
       - name: Create debug keystore
@@ -187,16 +186,9 @@ jobs:
         run: |
           set -e
 
-          echo "Java:"
           java -version
-
-          echo "Godot:"
           godot --version
-
-          echo "ADB:"
           "$ANDROID_SDK_ROOT/platform-tools/adb" version
-
-          echo "SDK Manager:"
           "$SDKMANAGER" --version
 
       - name: Create Android export preset
@@ -234,9 +226,17 @@ jobs:
           gradle_build/gradle_build_directory=""
           gradle_build/android_source_template=""
           gradle_build/compress_native_libraries=false
+          gradle_build/custom_theme_attributes={}
           gradle_build/export_format=0
           gradle_build/min_sdk=""
           gradle_build/target_sdk=""
+
+          keystore/debug=""
+          keystore/debug_user=""
+          keystore/debug_password=""
+          keystore/release=""
+          keystore/release_user=""
+          keystore/release_password=""
 
           architectures/armeabi-v7a=false
           architectures/arm64-v8a=true
@@ -248,7 +248,6 @@ jobs:
 
           package/unique_name="com.realdrive.v2.highend"
           package/name="RealDrive V2 HIGH-END"
-          package/short_name="RealDrive V2"
           package/signed=true
           package/app_category=2
           package/retain_data_on_uninstall=false
@@ -264,13 +263,19 @@ jobs:
 
           graphics/opengl_debug=false
 
+          gesture/swipe_to_dismiss=false
+
+          xr_features/xr_mode=0
+
+          screen/background_color=Color(0, 0, 0, 1)
+          screen/edge_to_edge=false
           screen/immersive_mode=true
           screen/support_small=true
           screen/support_normal=true
           screen/support_large=true
           screen/support_xlarge=true
 
-          screen/background_color=Color(0, 0, 0, 1)
+          shader_baker/enabled=false
 
           user_data_backup/allow=false
 
@@ -282,7 +287,29 @@ jobs:
 
           permissions/custom_permissions=PackedStringArray()
 
-          permissions/internet=false
+          permissions/access_checkin_properties=false
+          permissions/access_coarse_location=false
+          permissions/access_fine_location=false
+          permissions/access_location_extra_commands=false
+          permissions/access_media_location=false
+          permissions/access_mock_location=false
+          permissions/access_network_state=false
+          permissions/access_surface_flinger=false
+          permissions/access_wifi_state=false
+          permissions/account_manager=false
+          permissions/authenticate_accounts=false
+          permissions/bluetooth=false
+          permissions/bluetooth_admin=false
+          permissions/camera=false
+          permissions/change_network_state=false
+          permissions/change_wifi_state=false
+          permissions/internet=true
+          permissions/location_hardware=false
+          permissions/modify_audio_settings=false
+          permissions/modify_phone_state=false
+          permissions/nfc=false
+          permissions/post_notifications=false
+          permissions/record_audio=false
           permissions/vibrate=false
           permissions/wake_lock=false
           EOF
@@ -299,8 +326,6 @@ jobs:
             --path "$PROJECT_DIR" \
             --editor \
             --quit
-
-          echo "Godot project imported successfully."
 
       - name: Build Android APK
         shell: bash
@@ -334,21 +359,12 @@ jobs:
 
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK was not created."
-
-            find "$PROJECT_DIR/build" \
-              -maxdepth 3 \
-              -type f \
-              -ls || true
-
+            find "$PROJECT_DIR/build" -maxdepth 3 -type f -ls || true
             exit 1
           fi
 
-          echo "=============================="
           echo "APK CREATED SUCCESSFULLY"
-          echo "=============================="
-
           ls -lh "$APK"
-
           file "$APK"
 
       - name: Upload APK
