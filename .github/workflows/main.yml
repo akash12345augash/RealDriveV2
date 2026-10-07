@@ -28,8 +28,6 @@ jobs:
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: RealDriveV2-HIGH-END.zip not found"
-            echo "Files found:"
-            find "$GITHUB_WORKSPACE" -maxdepth 3 -type f
             exit 1
           fi
 
@@ -50,8 +48,6 @@ jobs:
           unzip -o "$ZIP" \
             -d "$GITHUB_WORKSPACE/project"
 
-          echo "Project extracted."
-
       - name: Find Godot project
         shell: bash
         run: |
@@ -64,20 +60,15 @@ jobs:
 
           if [ -z "$PROJECT_FILE" ]; then
             echo "ERROR: project.godot not found"
-
-            find "$GITHUB_WORKSPACE/project" \
-              -maxdepth 4 \
-              -type f
-
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$PROJECT_FILE")
 
-          echo "Godot project found:"
-          echo "$PROJECT_DIR"
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Godot project:"
+          echo "$PROJECT_DIR"
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -89,8 +80,6 @@ jobs:
         shell: bash
         run: |
           set -e
-
-          echo "Searching for Android SDK..."
 
           SDK=""
 
@@ -137,18 +126,8 @@ jobs:
 
           if [ -z "$SDKMANAGER" ]; then
             echo "ERROR: sdkmanager not found"
-
-            find "$SDK" \
-              -maxdepth 6 \
-              -type f \
-              -name "sdkmanager" \
-              2>/dev/null || true
-
             exit 1
           fi
-
-          echo "SDK Manager:"
-          echo "$SDKMANAGER"
 
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
@@ -184,9 +163,6 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
 
-          echo "Godot Android settings:"
-          cat "$HOME/.config/godot/editor_settings-4.tres"
-
       - name: Create debug keystore
         shell: bash
         run: |
@@ -194,57 +170,33 @@ jobs:
 
           mkdir -p "$HOME/.android"
 
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-
-            keytool \
-              -genkeypair \
-              -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-
-          fi
-
-          echo "Debug keystore ready."
+          keytool \
+            -genkeypair \
+            -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Verify tools
         shell: bash
         run: |
           set -e
 
-          echo "=============================="
-          echo "JAVA"
-          echo "=============================="
-
+          echo "Java:"
           java -version
 
-          echo "=============================="
-          echo "GODOT"
-          echo "=============================="
-
+          echo "Godot:"
           godot --version
 
-          echo "=============================="
-          echo "ANDROID SDK"
-          echo "=============================="
-
-          echo "$ANDROID_SDK_ROOT"
-
-          echo "=============================="
-          echo "ADB"
-          echo "=============================="
-
+          echo "ADB:"
           "$ANDROID_SDK_ROOT/platform-tools/adb" version
 
-          echo "=============================="
-          echo "SDKMANAGER"
-          echo "=============================="
-
+          echo "SDK Manager:"
           "$SDKMANAGER" --version
 
       - name: Create Android export preset
@@ -298,7 +250,7 @@ jobs:
           package/name="RealDrive V2 HIGH-END"
           package/short_name="RealDrive V2"
           package/signed=true
-          package/app_category=0
+          package/app_category=2
           package/retain_data_on_uninstall=false
           package/exclude_from_recents=false
           package/show_in_android_tv=false
@@ -317,13 +269,25 @@ jobs:
           screen/support_normal=true
           screen/support_large=true
           screen/support_xlarge=true
+
+          screen/background_color=Color(0, 0, 0, 1)
+
+          user_data_backup/allow=false
+
+          command_line/extra_args=""
+
+          apk_expansion/enable=false
+          apk_expansion/SALT=""
+          apk_expansion/public_key=""
+
+          permissions/custom_permissions=PackedStringArray()
+
+          permissions/internet=false
+          permissions/vibrate=false
+          permissions/wake_lock=false
           EOF
 
-          echo "=============================="
-          echo "ANDROID EXPORT PRESET"
-          echo "=============================="
-
-          cat "$PROJECT_DIR/export_presets.cfg"
+          echo "Android export preset created."
 
       - name: Import Godot project
         shell: bash
@@ -355,6 +319,7 @@ jobs:
 
           godot \
             --headless \
+            --verbose \
             --path "$PROJECT_DIR" \
             --export-debug \
             "Android" \
@@ -366,9 +331,6 @@ jobs:
           set -e
 
           APK="$PROJECT_DIR/build/RealDriveV2-HIGH-END.apk"
-
-          echo "Checking APK:"
-          echo "$APK"
 
           if [ ! -f "$APK" ]; then
             echo "ERROR: APK was not created."
