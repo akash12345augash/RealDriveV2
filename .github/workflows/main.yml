@@ -1,4 +1,4 @@
-name: Build Real Drive V2 APK
+name: Build RealDrive V2 HIGH-END APK
 
 on:
   workflow_dispatch:
@@ -10,68 +10,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      ANDROID_HOME: /usr/local/lib/android/sdk
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Configure Android SDK
-        run: |
-          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
-      - name: Install Android SDK packages
-        run: |
-          export PATH="$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
-
-          yes | sdkmanager --licenses || true
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
-
-      - name: Find newest RealDrive ZIP
+      - name: Find HIGH-END ZIP
         shell: bash
         run: |
           set -e
 
-          echo "Searching for RealDrive ZIP files..."
-
-          ZIP=$(find . -maxdepth 3 -type f \
-            \( -iname "RealDrive*.zip" -o -iname "*RealDrive*.zip" \) \
-            -printf '%T@ %p\n' \
-            | sort -nr \
-            | head -1 \
-            | cut -d' ' -f2-)
+          ZIP=$(find . -type f -name "RealDriveV2-HIGH-END.zip" | head -1)
 
           if [ -z "$ZIP" ]; then
-            echo "ERROR: No RealDrive ZIP file found."
-            echo "ZIP files in repository:"
+            echo "ERROR: RealDriveV2-HIGH-END.zip was not found."
+            echo "ZIP files currently in repository:"
             find . -type f -name "*.zip" -print
             exit 1
           fi
 
-          echo "Newest ZIP found:"
-          echo "$ZIP"
+          echo "Found: $ZIP"
+          echo "ZIP_FILE=$ZIP" >> "$GITHUB_ENV"
 
-          echo "REALDRIVE_ZIP=$ZIP" >> "$GITHUB_ENV"
-
-      - name: Extract newest project
+      - name: Extract HIGH-END project
         shell: bash
         run: |
           set -e
@@ -79,51 +39,73 @@ jobs:
           rm -rf game
           mkdir -p game
 
-          echo "Extracting:"
-          echo "$REALDRIVE_ZIP"
-
-          unzip -o "$REALDRIVE_ZIP" -d game
+          echo "Extracting $ZIP_FILE"
+          unzip -o "$ZIP_FILE" -d game
 
           echo ""
-          echo "Searching for Android project..."
+          echo "Extracted files:"
+          find game -maxdepth 4 -type f | head -100
 
-          SETTINGS=$(find game -type f \
-            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
-            | head -1)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: Android project not found."
-            find game -maxdepth 5 -type f | head -100
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "Android project:"
-          echo "$PROJECT_DIR"
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Build Debug APK
+      - name: Find Godot project
         shell: bash
         run: |
           set -e
 
-          cd "$PROJECT_DIR"
+          PROJECT_FILE=$(find game -type f -name "project.godot" | head -1)
 
-          echo "Building project..."
-          gradle assembleDebug --no-daemon --stacktrace
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: project.godot not found."
+            exit 1
+          fi
 
-      - name: Find APK
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
+
+          echo "Godot project found at:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Setup Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+          use-dotnet: false
+          include-templates: true
+
+      - name: Verify Godot
+        run: |
+          godot --version
+
+      - name: Import Godot project
+        run: |
+          godot \
+            --headless \
+            --editor \
+            --quit \
+            --path "$PROJECT_DIR"
+
+      - name: Build Android APK
         shell: bash
         run: |
-          echo "APK files generated:"
+          set -e
+
+          mkdir -p "$PROJECT_DIR/build"
+
+          godot \
+            --headless \
+            --path "$PROJECT_DIR" \
+            --export-debug "Android" \
+            "$PROJECT_DIR/build/RealDriveV2-HIGH-END.apk"
+
+      - name: Check APK
+        run: |
+          echo "Generated APK:"
           find "$PROJECT_DIR" -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RealDriveV2-debug-apk
+          name: RealDriveV2-HIGH-END-debug
           path: |
-            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/debug/*.apk
+            ${{ env.PROJECT_DIR }}/build/*.apk
           if-no-files-found: error
