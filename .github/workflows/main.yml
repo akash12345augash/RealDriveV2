@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -18,23 +19,38 @@ jobs:
         shell: bash
         run: |
           set -e
-          ZIP=$(find "$GITHUB_WORKSPACE" -maxdepth 3 -type f -name "RealDriveV2-HIGH-END.zip" | head -n 1)
+
+          ZIP=$(find "$GITHUB_WORKSPACE" \
+            -maxdepth 3 \
+            -type f \
+            -name "RealDriveV2-HIGH-END.zip" \
+            | head -n 1)
 
           if [ -z "$ZIP" ]; then
             echo "ERROR: RealDriveV2-HIGH-END.zip not found"
+            echo "Files found:"
+            find "$GITHUB_WORKSPACE" -maxdepth 3 -type f
             exit 1
           fi
 
+          echo "Found ZIP:"
+          echo "$ZIP"
+
           echo "ZIP=$ZIP" >> "$GITHUB_ENV"
-          echo "Found: $ZIP"
 
       - name: Extract HIGH-END project
         shell: bash
         run: |
           set -e
+
           rm -rf "$GITHUB_WORKSPACE/project"
+
           mkdir -p "$GITHUB_WORKSPACE/project"
-          unzip -o "$ZIP" -d "$GITHUB_WORKSPACE/project"
+
+          unzip -o "$ZIP" \
+            -d "$GITHUB_WORKSPACE/project"
+
+          echo "Project extracted."
 
       - name: Find Godot project
         shell: bash
@@ -48,16 +64,20 @@ jobs:
 
           if [ -z "$PROJECT_FILE" ]; then
             echo "ERROR: project.godot not found"
-            find "$GITHUB_WORKSPACE/project" -maxdepth 3 -type f
+
+            find "$GITHUB_WORKSPACE/project" \
+              -maxdepth 4 \
+              -type f
+
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$PROJECT_FILE")
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-          echo "Godot project:"
+          echo "Godot project found:"
           echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -91,7 +111,7 @@ jobs:
             exit 1
           fi
 
-          echo "Android SDK found at:"
+          echo "Android SDK:"
           echo "$SDK"
 
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
@@ -99,8 +119,6 @@ jobs:
 
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
           echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
-          echo "Checking sdkmanager..."
 
           SDKMANAGER=""
 
@@ -111,27 +129,35 @@ jobs:
           if [ -z "$SDKMANAGER" ]; then
             SDKMANAGER=$(find "$SDK/cmdline-tools" \
               -type f \
-              -name sdkmanager \
+              -name "sdkmanager" \
               -executable \
-              2>/dev/null | head -n 1 || true)
+              2>/dev/null \
+              | head -n 1 || true)
           fi
 
           if [ -z "$SDKMANAGER" ]; then
             echo "ERROR: sdkmanager not found"
-            find "$SDK" -maxdepth 5 -type f -name sdkmanager 2>/dev/null || true
+
+            find "$SDK" \
+              -maxdepth 6 \
+              -type f \
+              -name "sdkmanager" \
+              2>/dev/null || true
+
             exit 1
           fi
 
-          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
-
-          echo "Using:"
+          echo "SDK Manager:"
           echo "$SDKMANAGER"
+
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
           "$SDKMANAGER" --version
 
           yes | "$SDKMANAGER" --licenses || true
 
-          "$SDKMANAGER" "platform-tools" \
+          "$SDKMANAGER" \
+            "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
@@ -148,7 +174,6 @@ jobs:
           set -e
 
           mkdir -p "$HOME/.config/godot"
-          mkdir -p "$HOME/.android"
 
           cat > "$HOME/.config/godot/editor_settings-4.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
@@ -170,6 +195,7 @@ jobs:
           mkdir -p "$HOME/.android"
 
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
+
             keytool \
               -genkeypair \
               -v \
@@ -181,26 +207,44 @@ jobs:
               -keysize 2048 \
               -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
+
           fi
+
+          echo "Debug keystore ready."
 
       - name: Verify tools
         shell: bash
         run: |
           set -e
 
-          echo "Java:"
+          echo "=============================="
+          echo "JAVA"
+          echo "=============================="
+
           java -version
 
-          echo "Godot:"
+          echo "=============================="
+          echo "GODOT"
+          echo "=============================="
+
           godot --version
 
-          echo "SDK:"
+          echo "=============================="
+          echo "ANDROID SDK"
+          echo "=============================="
+
           echo "$ANDROID_SDK_ROOT"
 
-          echo "ADB:"
+          echo "=============================="
+          echo "ADB"
+          echo "=============================="
+
           "$ANDROID_SDK_ROOT/platform-tools/adb" version
 
-          echo "SDK Manager:"
+          echo "=============================="
+          echo "SDKMANAGER"
+          echo "=============================="
+
           "$SDKMANAGER" --version
 
       - name: Create Android export preset
@@ -208,56 +252,77 @@ jobs:
         run: |
           set -e
 
-          cat > "$PROJECT_DIR/export_presets.cfg" <<EOF
+          cat > "$PROJECT_DIR/export_presets.cfg" <<'EOF'
           [preset.0]
 
           name="Android"
           platform="Android"
           runnable=false
+          advanced_options=false
           dedicated_server=false
           custom_features=""
           export_filter="all_resources"
           include_filter=""
           exclude_filter=""
           export_path=""
-          patch_list=PackedStringArray()
+          patches=PackedStringArray()
           encryption_include_filters=""
           encryption_exclude_filters=""
+          seed=0
           encrypt_pck=false
           encrypt_directory=false
+          script_export_mode=2
 
           [preset.0.options]
 
           custom_template/debug=""
           custom_template/release=""
 
-          package/unique_name="com.realdrive.v2.highend"
-          package/name="RealDrive V2 HIGH-END"
-          package/short_name="RealDrive V2"
-          package/version_code=1
-          package/version_name="1.0"
-
-          package/signed=true
-
-          export_format/convert_text_resources=true
-          export_format/convert_binary_resources=true
-
-          screen/handheld/orientation=1
-          screen/immersive_mode=true
+          gradle_build/use_gradle_build=false
+          gradle_build/gradle_build_directory=""
+          gradle_build/android_source_template=""
+          gradle_build/compress_native_libraries=false
+          gradle_build/export_format=0
+          gradle_build/min_sdk=""
+          gradle_build/target_sdk=""
 
           architectures/armeabi-v7a=false
           architectures/arm64-v8a=true
+          architectures/x86=false
+          architectures/x86_64=false
 
-          android_sdk_path="$ANDROID_SDK_ROOT"
+          version/code=1
+          version/name="1.0"
 
-          export/android/debug_keystore="$HOME/.android/debug.keystore"
-          export/android/debug_keystore_user="androiddebugkey"
-          export/android/debug_keystore_pass="android"
+          package/unique_name="com.realdrive.v2.highend"
+          package/name="RealDrive V2 HIGH-END"
+          package/short_name="RealDrive V2"
+          package/signed=true
+          package/app_category=0
+          package/retain_data_on_uninstall=false
+          package/exclude_from_recents=false
+          package/show_in_android_tv=false
+          package/show_in_app_library=true
+          package/show_as_launcher_app=true
 
-          gradle_build/use_gradle_build=false
+          launcher_icons/main_192x192=""
+          launcher_icons/adaptive_foreground_432x432=""
+          launcher_icons/adaptive_background_432x432=""
+          launcher_icons/adaptive_monochrome_432x432=""
+
+          graphics/opengl_debug=false
+
+          screen/immersive_mode=true
+          screen/support_small=true
+          screen/support_normal=true
+          screen/support_large=true
+          screen/support_xlarge=true
           EOF
 
-          echo "Created export preset:"
+          echo "=============================="
+          echo "ANDROID EXPORT PRESET"
+          echo "=============================="
+
           cat "$PROJECT_DIR/export_presets.cfg"
 
       - name: Import Godot project
@@ -271,12 +336,22 @@ jobs:
             --editor \
             --quit
 
+          echo "Godot project imported successfully."
+
       - name: Build Android APK
         shell: bash
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: /home/runner/.android/debug.keystore
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
         run: |
           set -e
 
           mkdir -p "$PROJECT_DIR/build"
+
+          echo "=============================="
+          echo "BUILDING REALDRIVE V2"
+          echo "=============================="
 
           godot \
             --headless \
@@ -292,11 +367,23 @@ jobs:
 
           APK="$PROJECT_DIR/build/RealDriveV2-HIGH-END.apk"
 
+          echo "Checking APK:"
+          echo "$APK"
+
           if [ ! -f "$APK" ]; then
-            echo "ERROR: APK was not created"
-            find "$PROJECT_DIR/build" -type f -maxdepth 3 || true
+            echo "ERROR: APK was not created."
+
+            find "$PROJECT_DIR/build" \
+              -maxdepth 3 \
+              -type f \
+              -ls || true
+
             exit 1
           fi
+
+          echo "=============================="
+          echo "APK CREATED SUCCESSFULLY"
+          echo "=============================="
 
           ls -lh "$APK"
 
